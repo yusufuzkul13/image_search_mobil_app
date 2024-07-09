@@ -1,11 +1,10 @@
 import 'dart:typed_data';
-
-import 'package:image_search/main.dart';
-import 'package:crop_lib_dart/crop_your_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
+import 'api_service.dart';
+import 'package:crop_lib_dart/crop_your_image.dart';
 
 void main() {
   runApp(MyApp());
@@ -26,7 +25,7 @@ class _MyAppState extends State<MyApp> {
       ),
       home: Scaffold(
         appBar: AppBar(
-          title: Text('Crop Your Image Demo'),
+          title: Text('Crop and Search Image Demo'),
         ),
         body: CropSample(),
       ),
@@ -40,7 +39,7 @@ class CropSample extends StatefulWidget {
 }
 
 class _CropSampleState extends State<CropSample> {
-  static const _images = const [
+  static const _images = [
     'assets/images/city.png',
     'assets/images/lake.png',
     'assets/images/train.png',
@@ -49,6 +48,7 @@ class _CropSampleState extends State<CropSample> {
 
   final _cropController = CropController();
   final _imageDataList = <Uint8List>[];
+  final ApiService _apiService = ApiService();
 
   var _loadingImage = false;
   var _currentImage = 0;
@@ -64,6 +64,7 @@ class _CropSampleState extends State<CropSample> {
   var _isCircleUi = false;
   Uint8List? _croppedData;
   var _statusText = '';
+  Map<String, dynamic>? _searchResults;
 
   @override
   void initState() {
@@ -98,8 +99,8 @@ class _CropSampleState extends State<CropSample> {
     label: 'images',
     extensions: <String>['jpg', 'png'],
   );
+
   Future<void> _loadUserImage() async {
-    // Open a file select dialog
     final XFile? file =
         await openFile(acceptedTypeGroups: <XTypeGroup>[allowTypeGroup]);
 
@@ -119,6 +120,27 @@ class _CropSampleState extends State<CropSample> {
     });
   }
 
+  Future<void> _searchImage(Uint8List imageData) async {
+    setState(() {
+      _loadingImage = true;
+    });
+
+    try {
+      final result = await _apiService.classifyImage(imageData);
+      setState(() {
+        _searchResults = result;
+      });
+    } catch (e) {
+      setState(() {
+        _statusText = 'Failed to search image: $e';
+      });
+    } finally {
+      setState(() {
+        _loadingImage = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -131,16 +153,18 @@ class _CropSampleState extends State<CropSample> {
             children: [
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(children: [
-                  Row(
-                    children: [
-                      for (var i = 0; i < _imageDataList.length; i++) ...[
-                        _buildThumbnail(_imageDataList[i]),
-                        const SizedBox(width: 16)
-                      ]
-                    ],
-                  )
-                ]),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        for (var i = 0; i < _imageDataList.length; i++) ...[
+                          _buildThumbnail(_imageDataList[i]),
+                          const SizedBox(width: 16),
+                        ]
+                      ],
+                    ),
+                  ],
+                ),
               ),
               TextButton(
                 child: Text("+ Load Image"),
@@ -161,6 +185,7 @@ class _CropSampleState extends State<CropSample> {
                               _croppedData = croppedData;
                               _isCropping = false;
                             });
+                            _searchImage(croppedData);
                           },
                           withCircleUi: _isCircleUi,
                           onStatusChanged: (status) => setState(() {
@@ -253,7 +278,7 @@ class _CropSampleState extends State<CropSample> {
                             icon: Icon(Icons.crop_5_4),
                             onPressed: () {
                               _isCircleUi = false;
-                              _cropController.aspectRatio = 4 / 3;
+                              _cropController.aspectRatio = 5 / 4;
                             },
                           ),
                           IconButton(
@@ -266,11 +291,12 @@ class _CropSampleState extends State<CropSample> {
                             },
                           ),
                           IconButton(
-                              icon: Icon(Icons.circle),
-                              onPressed: () {
-                                _isCircleUi = true;
-                                _cropController.withCircleUi = true;
-                              }),
+                            icon: Icon(Icons.circle),
+                            onPressed: () {
+                              _isCircleUi = true;
+                              _cropController.withCircleUi = true;
+                            },
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -298,6 +324,7 @@ class _CropSampleState extends State<CropSample> {
               const SizedBox(height: 16),
               Text(_statusText),
               const SizedBox(height: 16),
+              _buildResults(),
             ],
           ),
           replacement: const CircularProgressIndicator(),
@@ -329,6 +356,29 @@ class _CropSampleState extends State<CropSample> {
             fit: BoxFit.cover,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildResults() {
+    if (_searchResults == null) {
+      return SizedBox.shrink();
+    }
+
+    final results = _searchResults!['results'] ?? [];
+
+    return Expanded(
+      child: ListView.builder(
+        itemCount: results.length,
+        itemBuilder: (context, index) {
+          final result = results[index];
+          return Card(
+            child: ListTile(
+              title: Text(result['description'] ?? 'No description'),
+              subtitle: Text('Score: ${result['score']}'),
+            ),
+          );
+        },
       ),
     );
   }
