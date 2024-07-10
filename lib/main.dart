@@ -5,17 +5,13 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'api_service.dart';
 import 'package:crop_lib_dart/crop_your_image.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 void main() {
   runApp(MyApp());
 }
 
-class MyApp extends StatefulWidget {
-  @override
-  _MyAppState createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -25,6 +21,8 @@ class _MyAppState extends State<MyApp> {
       ),
       home: Scaffold(
         appBar: AppBar(
+          centerTitle: true,
+          backgroundColor: Colors.blueGrey,
           title: Text('Crop and Search Image Demo'),
         ),
         body: CropSample(),
@@ -52,19 +50,14 @@ class _CropSampleState extends State<CropSample> {
 
   var _loadingImage = false;
   var _currentImage = 0;
-  set currentImage(int value) {
-    setState(() {
-      _currentImage = value;
-    });
-    _cropController.image = _imageDataList[_currentImage];
-  }
-
-  var _isSumbnail = false;
+  var _isThumbnail = false;
   var _isCropping = false;
   var _isCircleUi = false;
   Uint8List? _croppedData;
   var _statusText = '';
   Map<String, dynamic>? _searchResults;
+  double _scale = 1.0;
+  double _previousScale = 1.0;
 
   @override
   void initState() {
@@ -90,9 +83,8 @@ class _CropSampleState extends State<CropSample> {
   }
 
   Future<Uint8List> _load_abs(String pathToFile) async {
-    final data = await File(pathToFile);
-
-    return await data.readAsBytes();
+    final data = await File(pathToFile).readAsBytes();
+    return data;
   }
 
   static const XTypeGroup allowTypeGroup = XTypeGroup(
@@ -141,6 +133,22 @@ class _CropSampleState extends State<CropSample> {
     }
   }
 
+  void _resetCrop() {
+    setState(() {
+      _croppedData = null;
+      _cropController.aspectRatio = 0;
+      _cropController.cropRect = Rect.zero;
+    });
+  }
+
+  void _showResultsScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ResultsScreen(searchResults: _searchResults),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -176,44 +184,59 @@ class _CropSampleState extends State<CropSample> {
                   child: Stack(
                     children: [
                       if (_imageDataList.isNotEmpty) ...[
-                        Crop(
-                          willUpdateScale: (newScale) => newScale < 5,
-                          controller: _cropController,
-                          image: _imageDataList[_currentImage],
-                          onCropped: (croppedData) {
+                        GestureDetector(
+                          onScaleStart: (details) {
+                            _previousScale = _scale;
+                          },
+                          onScaleUpdate: (details) {
                             setState(() {
-                              _croppedData = croppedData;
-                              _isCropping = false;
+                              _scale = _previousScale * details.scale;
                             });
-                            _searchImage(croppedData);
                           },
-                          withCircleUi: _isCircleUi,
-                          onStatusChanged: (status) => setState(() {
-                            _statusText = <CropStatus, String>{
-                                  CropStatus.nothing: 'Crop has no image data',
-                                  CropStatus.loading:
-                                      'Crop is now loading given image',
-                                  CropStatus.ready: 'Crop is now ready!',
-                                  CropStatus.cropping:
-                                      'Crop is now cropping image',
-                                }[status] ??
-                                '';
-                          }),
-                          initialSize: 0.5,
-                          maskColor: _isSumbnail ? Colors.white : null,
-                          cornerDotBuilder: (size, edgeAlignment) =>
-                              const SizedBox.shrink(),
-                          interactive: true,
-                          fixCropRect: true,
-                          radius: 20,
-                          initialRectBuilder: (viewportRect, imageRect) {
-                            return Rect.fromLTRB(
-                              viewportRect.left + 24,
-                              viewportRect.top + 24,
-                              viewportRect.right - 24,
-                              viewportRect.bottom - 24,
-                            );
-                          },
+                          child: Transform.scale(
+                            scale: _scale,
+                            child: Crop(
+                              controller: _cropController,
+                              image: _imageDataList[_currentImage],
+                              onCropped: (croppedData) {
+                                setState(() {
+                                  _croppedData = croppedData;
+                                  _isCropping = false;
+                                });
+                                _searchImage(croppedData);
+                              },
+                              withCircleUi: _isCircleUi,
+                              onStatusChanged: (status) {
+                                setState(() {
+                                  _statusText = <CropStatus, String>{
+                                        CropStatus.nothing:
+                                            'Crop has no image data',
+                                        CropStatus.loading:
+                                            'Crop is now loading given image',
+                                        CropStatus.ready: 'Crop is now ready!',
+                                        CropStatus.cropping:
+                                            'Crop is now cropping image',
+                                      }[status] ??
+                                      '';
+                                });
+                              },
+                              initialSize: 0.5,
+                              maskColor: _isThumbnail ? Colors.white : null,
+                              cornerDotBuilder: (size, edgeAlignment) =>
+                                  const SizedBox.shrink(),
+                              interactive: true,
+                              fixCropRect: true,
+                              radius: 20,
+                              initialRectBuilder: (viewportRect, imageRect) {
+                                return Rect.fromLTRB(
+                                  viewportRect.left + 24,
+                                  viewportRect.top + 24,
+                                  viewportRect.right - 24,
+                                  viewportRect.bottom - 24,
+                                );
+                              },
+                            ),
+                          ),
                         ),
                         IgnorePointer(
                           child: Padding(
@@ -232,11 +255,12 @@ class _CropSampleState extends State<CropSample> {
                         right: 16,
                         bottom: 16,
                         child: GestureDetector(
-                          onTapDown: (_) => setState(() => _isSumbnail = true),
-                          onTapUp: (_) => setState(() => _isSumbnail = false),
+                          onTapDown: (_) => setState(() => _isThumbnail = true),
+                          onTapUp: (_) => setState(() => _isThumbnail = false),
                           child: CircleAvatar(
-                            backgroundColor:
-                                _isSumbnail ? Colors.blue.shade50 : Colors.blue,
+                            backgroundColor: _isThumbnail
+                                ? Colors.blue.shade50
+                                : Colors.blue,
                             child: Center(
                               child: Icon(Icons.crop_free_rounded),
                             ),
@@ -285,9 +309,8 @@ class _CropSampleState extends State<CropSample> {
                             icon: Icon(Icons.crop_square),
                             onPressed: () {
                               _isCircleUi = false;
-                              _cropController
-                                ..withCircleUi = false
-                                ..aspectRatio = 1;
+                              _cropController.withCircleUi = false;
+                              _cropController.aspectRatio = 1;
                             },
                           ),
                           IconButton(
@@ -299,86 +322,139 @@ class _CropSampleState extends State<CropSample> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            setState(() {
-                              _isCropping = true;
-                            });
-                            _isCircleUi
-                                ? _cropController.cropCircle()
-                                : _cropController.crop();
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Text('CROP IT!'),
+                      SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.zoom_in),
+                            onPressed: () {
+                              setState(() {
+                                _scale += 0.1;
+                              });
+                            },
                           ),
-                        ),
+                          IconButton(
+                            icon: Icon(Icons.zoom_out),
+                            onPressed: () {
+                              setState(() {
+                                _scale -= 0.1;
+                              });
+                            },
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 40),
+                      SizedBox(height: 20),
+                      TextButton(
+                        child: Text("Reset"),
+                        onPressed: _resetCrop,
+                      ),
                     ],
                   ),
                 ),
-              const SizedBox(height: 16),
-              Text(_statusText),
-              const SizedBox(height: 16),
-              _buildResults(),
+              if (_croppedData != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      ElevatedButton(
+                        onPressed: _showResultsScreen,
+                        child: Text('Show Results'),
+                      ),
+                      SizedBox(height: 20),
+                      if (_searchResults != null) ...[
+                        Text(
+                          'Search Results:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 10),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: _searchResults!.length,
+                            itemBuilder: (context, index) {
+                              final key = _searchResults!.keys.elementAt(index);
+                              final value = _searchResults![key];
+                              return ListTile(
+                                title: Text('$key: $value'),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
             ],
           ),
-          replacement: const CircularProgressIndicator(),
-        ),
-      ),
-    );
-  }
-
-  Expanded _buildThumbnail(Uint8List data) {
-    final index = _imageDataList.indexOf(data);
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          _croppedData = null;
-          currentImage = index;
-        },
-        child: Container(
-          height: 100,
-          decoration: BoxDecoration(
-            border: index == _currentImage
-                ? Border.all(
-                    width: 8,
-                    color: Colors.blue,
-                  )
-                : null,
-          ),
-          child: Image.memory(
-            data,
-            fit: BoxFit.cover,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildResults() {
-    if (_searchResults == null) {
-      return SizedBox.shrink();
-    }
-
-    final results = _searchResults!['results'] ?? [];
-
-    return Expanded(
-      child: ListView.builder(
-        itemCount: results.length,
-        itemBuilder: (context, index) {
-          final result = results[index];
-          return Card(
-            child: ListTile(
-              title: Text(result['description'] ?? 'No description'),
-              subtitle: Text('Score: ${result['score']}'),
+          replacement: Center(
+            child: SpinKitCircle(
+              color: Colors.blue,
+              size: 50.0,
             ),
-          );
-        },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnail(Uint8List imageData) {
+    final index = _imageDataList.indexOf(imageData);
+    return GestureDetector(
+      onTap: () => setState(() => _currentImage = index),
+      child: ClipOval(
+        child: Image.memory(
+          imageData,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
+  }
+}
+
+class ResultsScreen extends StatelessWidget {
+  final Map<String, dynamic>? searchResults;
+
+  const ResultsScreen({Key? key, required this.searchResults})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Results Screen'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Results Screen Content',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 20),
+            if (searchResults != null) ...[
+              Text(
+                'Search Results:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: searchResults!.length,
+                  itemBuilder: (context, index) {
+                    final key = searchResults!.keys.elementAt(index);
+                    final value = searchResults![key];
+                    return ListTile(
+                      title: Text('$key: $value'),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
