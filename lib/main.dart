@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:io';
 import 'package:file_selector/file_selector.dart';
+import 'package:image_search/cv_view.dart';
 import 'api_service.dart';
 import 'package:crop_lib_dart/crop_your_image.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -118,7 +119,7 @@ class _CropSampleState extends State<CropSample> {
     });
 
     try {
-      final result = await _apiService.classifyImage(imageData);
+      final result = await _apiService.classifyImageMock(imageData);
       setState(() {
         _searchResults = result;
       });
@@ -273,6 +274,7 @@ class _CropSampleState extends State<CropSample> {
                     child: _croppedData == null
                         ? SizedBox.shrink()
                         : Image.memory(_croppedData!),
+                        // : CvImageView(image: _croppedData!),
                   ),
                 ),
               ),
@@ -349,6 +351,23 @@ class _CropSampleState extends State<CropSample> {
                         child: Text("Reset"),
                         onPressed: _resetCrop,
                       ),
+                      Container(
+                        width: 500,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _isCropping = true;
+                            });
+                            _isCircleUi
+                                ? _cropController.cropCircle()
+                                : _cropController.crop();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Text('CROP IT!'),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -368,18 +387,19 @@ class _CropSampleState extends State<CropSample> {
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         SizedBox(height: 10),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: _searchResults!.length,
-                            itemBuilder: (context, index) {
-                              final key = _searchResults!.keys.elementAt(index);
-                              final value = _searchResults![key];
-                              return ListTile(
-                                title: Text('$key: $value'),
-                              );
-                            },
-                          ),
-                        ),
+                        SingleChildScrollView(child:
+                        ListView.builder(
+                          scrollDirection: Axis.vertical,
+                          shrinkWrap: true,
+                          itemCount: _searchResults!.length,
+                          itemBuilder: (context, index) {
+                            final key = _searchResults!.keys.elementAt(index);
+                            final value = _searchResults![key];
+                            return ListTile(
+                              title: Text('$key: $value'),
+                            );
+                          },
+                        )),
                       ],
                     ],
                   ),
